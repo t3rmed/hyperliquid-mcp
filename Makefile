@@ -66,6 +66,10 @@ clean:
 local:
 	uv run python -m hyperliquid_mcp_server.main
 
+# Run HTTP server locally
+http:
+	uv run python -m hyperliquid_mcp_server.http_server
+
 # Build and run
 up: build run
 

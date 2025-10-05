@@ -16,6 +16,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "eth-hash[pycryptodome]>=0.5.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +33,7 @@ dev = [
 
 [project.scripts]
 hyperliquid-mcp-server = "hyperliquid_mcp_server.main:main"
+hyperliquid-mcp-http = "hyperliquid_mcp_server.http_server:main"
 
 [build-system]
 requires = ["hatchling"]
