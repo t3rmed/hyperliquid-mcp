@@ -26,9 +26,6 @@ RUN uv sync --frozen --no-cache
 # Copy source code
 COPY hyperliquid_mcp_server/ ./hyperliquid_mcp_server/
 
-# Copy environment example (optional)
-COPY .env.example ./
-
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
