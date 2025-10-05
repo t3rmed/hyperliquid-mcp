@@ -18,14 +18,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files and LICENSE (needed for package build)
-COPY pyproject.toml uv.lock* LICENSE ./
+# Copy all files needed for package build
+COPY pyproject.toml uv.lock* LICENSE README.md ./
+COPY hyperliquid_mcp_server/ ./hyperliquid_mcp_server/
 
 # Install dependencies
 RUN uv sync --frozen --no-cache
-
-# Copy source code
-COPY hyperliquid_mcp_server/ ./hyperliquid_mcp_server/
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app \
