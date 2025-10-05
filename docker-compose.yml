@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  hyperliquid-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hyperliquid-mcp-server:latest
+    container_name: hyperliquid-mcp-server
+    environment:
+      # Environment variables for Hyperliquid configuration
+      # Copy from .env file or set here directly
+      - HYPERLIQUID_PRIVATE_KEY=${HYPERLIQUID_PRIVATE_KEY:-}
+      - HYPERLIQUID_WALLET_ADDRESS=${HYPERLIQUID_WALLET_ADDRESS:-}
+      - HYPERLIQUID_TESTNET=${HYPERLIQUID_TESTNET:-false}
+    volumes:
+      # Mount local .env file if it exists
+      - ./.env:/app/.env:ro
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    # Network mode for MCP stdio communication
+    network_mode: none
+
+  # Development service with volume mounts for hot reloading
+  hyperliquid-mcp-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hyperliquid-mcp-server:latest
+    container_name: hyperliquid-mcp-server-dev
+    environment:
+      - HYPERLIQUID_PRIVATE_KEY=${HYPERLIQUID_PRIVATE_KEY:-}
+      - HYPERLIQUID_WALLET_ADDRESS=${HYPERLIQUID_WALLET_ADDRESS:-}
+      - HYPERLIQUID_TESTNET=${HYPERLIQUID_TESTNET:-true}
+    volumes:
+      # Mount source code for development
+      - ./hyperliquid_mcp_server:/app/hyperliquid_mcp_server
+      - ./.env:/app/.env:ro
+    stdin_open: true
+    tty: true
+    command: ["uv", "run", "python", "-m", "hyperliquid_mcp_server.main"]
+    profiles:
+      - dev
