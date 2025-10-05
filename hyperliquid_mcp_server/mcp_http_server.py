@@ -7,7 +7,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from uvicorn import run
 
 from .utils import HyperliquidClient, get_config
@@ -209,6 +209,145 @@ async def list_tools_rest():
             for tool in ALL_TOOLS
         ]
     }
+
+
+@mcp_app.get("/sse")
+async def sse_endpoint():
+    """Server-Sent Events endpoint for httpStreamable transport."""
+    async def event_stream():
+        # Send initial connection message
+        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
+
+        # Keep connection alive
+        while True:
+            yield f"data: {json.dumps({'type': 'ping', 'timestamp': asyncio.get_event_loop().time()})}\n\n"
+            await asyncio.sleep(30)  # Ping every 30 seconds
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
+
+@mcp_app.post("/stream")
+async def mcp_stream_handler(request: Request):
+    """Streaming MCP handler for httpStreamable transport."""
+    try:
+        body = await request.json()
+
+        # Process the same way as regular MCP handler
+        if not isinstance(body, dict):
+            return JSONResponse(
+                MCPResponse.error(None, -32600, "Invalid Request: not a JSON object"),
+                status_code=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        if body.get("jsonrpc") != "2.0":
+            return JSONResponse(
+                MCPResponse.error(body.get("id"), -32600, "Invalid Request: missing or invalid jsonrpc"),
+                status_code=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        method = body.get("method")
+        if not method:
+            return JSONResponse(
+                MCPResponse.error(body.get("id"), -32600, "Invalid Request: missing method"),
+                status_code=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        request_id = body.get("id")
+        params = body.get("params", {})
+
+        # Handle MCP methods (same logic as main handler)
+        if method == "initialize":
+            response = MCPResponse.success(request_id, {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {},
+                },
+                "serverInfo": {
+                    "name": "hyperliquid-mcp-server",
+                    "version": "1.0.0"
+                }
+            })
+            return JSONResponse(response, headers={"Access-Control-Allow-Origin": "*"})
+
+        elif method == "initialized":
+            return JSONResponse({"jsonrpc": "2.0"}, headers={"Access-Control-Allow-Origin": "*"})
+
+        elif method == "tools/list":
+            tools_list = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.inputSchema
+                }
+                for tool in ALL_TOOLS
+            ]
+            response = MCPResponse.success(request_id, {"tools": tools_list})
+            return JSONResponse(response, headers={"Access-Control-Allow-Origin": "*"})
+
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            if not tool_name:
+                return JSONResponse(
+                    MCPResponse.error(request_id, -32602, "Invalid params: missing tool name"),
+                    status_code=400,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+
+            if tool_name not in TOOL_HANDLERS:
+                return JSONResponse(
+                    MCPResponse.error(request_id, -32601, f"Method not found: tool '{tool_name}' not available"),
+                    status_code=404,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+
+            try:
+                handler = TOOL_HANDLERS[tool_name]
+                arguments = params.get("arguments", {})
+                result = await handler(client, arguments)
+
+                response = MCPResponse.success(request_id, {
+                    "content": result["content"]
+                })
+                return JSONResponse(response, headers={"Access-Control-Allow-Origin": "*"})
+
+            except Exception as e:
+                return JSONResponse(
+                    MCPResponse.error(request_id, -32603, f"Internal error: {str(e)}"),
+                    status_code=500,
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+
+        else:
+            return JSONResponse(
+                MCPResponse.error(request_id, -32601, f"Method not found: {method}"),
+                status_code=404,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+    except json.JSONDecodeError:
+        return JSONResponse(
+            MCPResponse.error(None, -32700, "Parse error: invalid JSON"),
+            status_code=400,
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            MCPResponse.error(None, -32603, f"Internal error: {str(e)}"),
+            status_code=500,
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
 
 
 def main():
