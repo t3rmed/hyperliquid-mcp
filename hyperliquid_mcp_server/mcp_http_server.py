@@ -260,7 +260,7 @@ async def sse_endpoint(request: Request):
 
         except asyncio.CancelledError:
             # Client disconnected
-            break
+            return
         except Exception as e:
             error_msg = {
                 "jsonrpc": "2.0",
