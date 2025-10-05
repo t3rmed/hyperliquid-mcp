@@ -212,25 +212,145 @@ async def list_tools_rest():
 
 
 @mcp_app.get("/sse")
-async def sse_endpoint():
-    """Server-Sent Events endpoint for httpStreamable transport."""
-    async def event_stream():
-        # Send initial connection message
-        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
+async def sse_endpoint(request: Request):
+    """Server-Sent Events MCP endpoint for n8n."""
+    async def mcp_sse_stream():
+        try:
+            # Send MCP server info immediately upon connection
+            server_info = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {
+                        "name": "hyperliquid-mcp-server",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+            yield f"data: {json.dumps(server_info)}\n\n"
 
-        # Keep connection alive
-        while True:
-            yield f"data: {json.dumps({'type': 'ping', 'timestamp': asyncio.get_event_loop().time()})}\n\n"
-            await asyncio.sleep(30)  # Ping every 30 seconds
+            # Send tools list
+            tools_list = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.inputSchema
+                }
+                for tool in ALL_TOOLS
+            ]
+
+            tools_response = {
+                "jsonrpc": "2.0",
+                "method": "notifications/tools/list",
+                "params": {"tools": tools_list}
+            }
+            yield f"data: {json.dumps(tools_response)}\n\n"
+
+            # Keep connection alive with heartbeat
+            while True:
+                await asyncio.sleep(30)
+                heartbeat = {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/ping",
+                    "params": {"timestamp": int(asyncio.get_event_loop().time())}
+                }
+                yield f"data: {json.dumps(heartbeat)}\n\n"
+
+        except asyncio.CancelledError:
+            # Client disconnected
+            break
+        except Exception as e:
+            error_msg = {
+                "jsonrpc": "2.0",
+                "method": "notifications/error",
+                "params": {"error": str(e)}
+            }
+            yield f"data: {json.dumps(error_msg)}\n\n"
 
     return StreamingResponse(
-        event_stream(),
+        mcp_sse_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control"
+            "Access-Control-Allow-Headers": "Cache-Control, Accept, Accept-Encoding, Authorization",
+            "Access-Control-Allow-Methods": "GET, OPTIONS"
+        }
+    )
+
+
+@mcp_app.post("/sse/execute")
+async def sse_tool_execute(request: Request):
+    """Execute tool for SSE clients."""
+    try:
+        body = await request.json()
+
+        tool_name = body.get("tool")
+        arguments = body.get("arguments", {})
+        request_id = body.get("id", "sse-request")
+
+        if not tool_name:
+            return JSONResponse(
+                {"error": "Missing tool name"},
+                status_code=400,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        if tool_name not in TOOL_HANDLERS:
+            return JSONResponse(
+                {"error": f"Tool '{tool_name}' not found"},
+                status_code=404,
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+
+        # Execute the tool
+        handler = TOOL_HANDLERS[tool_name]
+        result = await handler(client, arguments)
+
+        response = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "content": result["content"]
+            }
+        }
+
+        return JSONResponse(
+            response,
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": body.get("id", "sse-request") if 'body' in locals() else "unknown",
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            },
+            status_code=500,
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+
+@mcp_app.options("/")
+@mcp_app.options("/sse")
+@mcp_app.options("/sse/execute")
+@mcp_app.options("/stream")
+async def cors_preflight():
+    """Handle CORS preflight requests."""
+    return JSONResponse(
+        {},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, Cache-Control, Accept, Accept-Encoding",
+            "Access-Control-Max-Age": "86400"
         }
     )
 
