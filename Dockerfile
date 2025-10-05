@@ -37,5 +37,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import hyperliquid_mcp_server; print('OK')" || exit 1
 
-# Default command - HTTP server for cloud deployment
-CMD ["uv", "run", "python", "-m", "hyperliquid_mcp_server.http_server"]
+# Default command - MCP JSON-RPC server for n8n and MCP clients
+CMD ["uv", "run", "python", "-m", "hyperliquid_mcp_server.mcp_http_server"]

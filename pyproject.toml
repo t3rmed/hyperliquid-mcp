@@ -34,6 +34,7 @@ dev = [
 [project.scripts]
 hyperliquid-mcp-server = "hyperliquid_mcp_server.main:main"
 hyperliquid-mcp-http = "hyperliquid_mcp_server.http_server:main"
+hyperliquid-mcp-jsonrpc = "hyperliquid_mcp_server.mcp_http_server:main"
 
 [build-system]
 requires = ["hatchling"]

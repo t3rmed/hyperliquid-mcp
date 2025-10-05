@@ -66,9 +66,13 @@ clean:
 local:
 	uv run python -m hyperliquid_mcp_server.main
 
-# Run HTTP server locally
+# Run HTTP server locally (REST-like endpoints)
 http:
 	uv run python -m hyperliquid_mcp_server.http_server
+
+# Run MCP JSON-RPC server locally (for n8n and MCP clients)
+mcp:
+	uv run python -m hyperliquid_mcp_server.mcp_http_server
 
 # Build and run
 up: build run
